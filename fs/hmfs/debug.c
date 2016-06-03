@@ -3,6 +3,7 @@
 #include <linux/seq_file.h>
 #include <linux/pagemap.h>
 #include <linux/string.h>
+#include <linux/rtc.h>
 #include "hmfs_fs.h"
 #include "segment.h"
 
@@ -391,6 +392,8 @@ static int print_cp_one(struct hmfs_sb_info *sbi, struct hmfs_checkpoint *cp,
 	size_t len = 0;
 	int i;
 	struct hmfs_stat_info *si = STAT_I(sbi);
+	struct rtc_time tm;
+	unsigned long rtime;
 
 	if (!cp)
 		return 0;
@@ -406,7 +409,7 @@ static int print_cp_one(struct hmfs_sb_info *sbi, struct hmfs_checkpoint *cp,
 					le64_to_cpu(cp->valid_block_count));
 
 		for (i = 0; i < sbi->nr_page_types; i++) {
-			len += hmfs_print(si, 1, "current segment (%d)[%lu, %lu]\n", i,
+			len += hmfs_print(si, 1, "current segment (%d):[%lu, %lu]\n", i,
 						le32_to_cpu(cp->cur_segno[i]), le32_to_cpu(cp->cur_blkoff[i]));
 		}
 		len += hmfs_print(si, 1, "prev_cp_addr: %x\n",
@@ -431,7 +434,10 @@ static int print_cp_one(struct hmfs_sb_info *sbi, struct hmfs_checkpoint *cp,
 					le32_to_cpu(cp->next_scan_nid));
 		len += hmfs_print(si, 1, "elapsed_time: %u\n",
 					le32_to_cpu(cp->elapsed_time));
-		len += hmfs_print(si, 1, "\n\n");
+		rtime = (unsigned long)(le32_to_cpu(cp->wall_time) - sys_tz.tz_minuteswest*60);
+		rtc_time_to_tm(rtime, &tm);
+		len += hmfs_print(si, 1, "wall_time: %04d-%02d-%02d %02d:%02d:%02d \n",tm.tm_year+1900,tm.tm_mon+1, tm.tm_mday,tm.tm_hour,tm.tm_min,tm.tm_sec);
+		len += hmfs_print(si, 1, "\n");
 	}
 	return len;
 }
