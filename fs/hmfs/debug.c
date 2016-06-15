@@ -39,6 +39,10 @@
 			"=========================================\n"
 
 #define USAGE_SIT	"=============== SIT USAGE ==============\n" \
+      			" `sit c`\n"\
+			"   -- check sit consistency to ssa\n"\
+      			" `sit s`\n"\
+			"   -- print segment number in Main Area\n"\
 			"=========================================\n"
 
 #define USAGE_INODE	"=============== INODE USAGE ==============\n" \
@@ -545,7 +549,7 @@ static size_t print_ssa_one(struct hmfs_sb_info *sbi, block_t blk_addr)
 
 	sum_entry = get_summary_by_addr(sbi, blk_addr);
 
-	len += hmfs_print(si, 1, "-- [%d %d] --\n", GET_SEGNO(sbi, blk_addr), GET_SEG_OFS(sbi, blk_addr));
+	len += hmfs_print(si, 1, "-- [%d: %d] --\n", GET_SEGNO(sbi, blk_addr), GET_SEG_OFS(sbi, blk_addr));
 	len += hmfs_print(si, 1, "  nid: %u\n", le32_to_cpu(sum_entry->nid));
 	len += hmfs_print(si, 1, "  start_version: %u\n",
 			   le32_to_cpu(sum_entry->start_version));
@@ -620,6 +624,7 @@ static inline int print_error_segment(struct hmfs_sb_info *sbi,
 
 static int hmfs_print_sit(struct hmfs_sb_info *sbi, int args, char argv[][MAX_ARG_LEN + 1])
 {
+	const char *opt = argv[1];
 	int sit_blk_cnt, len=0;
 	int ssa_blk_cnt;
 	int blk_id = 0;
@@ -627,26 +632,29 @@ static int hmfs_print_sit(struct hmfs_sb_info *sbi, int args, char argv[][MAX_AR
 
 	struct hmfs_summary *ssa_entry;
 
+	if('c' == opt[0]) {
+		for (segno = 0; segno < TOTAL_SEGS(sbi); ++segno) {
+			ssa_entry = get_summary_block(sbi, segno);
+			ssa_blk_cnt = 0;
+			for (blk_id = 0; blk_id < SM_I(sbi)->page_4k_per_seg; ++blk_id) {
+				if (get_summary_valid_bit(ssa_entry))//seems that le16 is ok
+					++ssa_blk_cnt;
+				ssa_entry++;
+			}
 
-	for (segno = 0; segno < TOTAL_SEGS(sbi); ++segno) {
-		ssa_entry = get_summary_block(sbi, segno);
-		ssa_blk_cnt = 0;
-		for (blk_id = 0; blk_id < SM_I(sbi)->page_4k_per_seg; ++blk_id) {
-			if (get_summary_valid_bit(ssa_entry))//seems that le16 is ok
-				++ssa_blk_cnt;
-			ssa_entry++;
+			sit_blk_cnt = get_vblocks_from_sit(sbi, segno);
+			if (ssa_blk_cnt != sit_blk_cnt){
+				len = print_error_segment(sbi, segno, sit_blk_cnt, ssa_blk_cnt);
+				break;
+			}
 		}
-
-		sit_blk_cnt = get_vblocks_from_sit(sbi, segno);
-		if (ssa_blk_cnt != sit_blk_cnt){
-			len = print_error_segment(sbi, segno, sit_blk_cnt, ssa_blk_cnt);
-			break;
+		if (segno == TOTAL_SEGS(sbi)){
+			len = hmfs_print(STAT_I(sbi), 1, "no error found in SIT check!\n");
 		}
+	} else if ('s' == opt[0]) {
+		len = hmfs_print(STAT_I(sbi), 1, "Segment count: %lu\n", TOTAL_SEGS(sbi));
+		
 	}
-	if (segno == TOTAL_SEGS(sbi)){
-		len = hmfs_print(STAT_I(sbi), 1, "no error found in SIT check!\n");
-	}
-
 	return len;
 }
 
@@ -946,8 +954,9 @@ static int hmfs_dispatch_cmd(struct hmfs_sb_info *sbi, const char *cmd, int len)
 	} else if (0 == strncasecmp(argv[0], "sit", 3)) {
 		if (args == 1) {
 			hmfs_print(si, 0, USAGE_SIT);
-			res = hmfs_print_sit(sbi, args, argv);
+			return 0;
 		}
+		res = hmfs_print_sit(sbi, args, argv);
 	} else if (0 == strncasecmp(argv[0], "nat", 3)) {
 		if (args == 1) {
 			hmfs_print(si, 0, USAGE_NAT);
